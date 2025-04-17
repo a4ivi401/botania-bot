@@ -1,7 +1,6 @@
 import logging
-import openai
-import anthropic
-import google.generativeai as genai
+import asyncio
+from openai import AsyncOpenAI
 from typing import Dict, Any, Optional
 
 from config import Config
@@ -12,10 +11,26 @@ logger = logging.getLogger(__name__)
 # Загрузка конфигурации
 config = Config()
 
-# Инициализация клиентов API
-openai.api_key = config.OPENAI_API_KEY
-anthropic_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-genai.configure(api_key=config.GOOGLE_API_KEY)
+# Инициализация OpenAI клиента
+openai_client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+
+# Инициализация клиентов API с обработкой ошибок
+anthropic_client = None
+try:
+    import anthropic
+    anthropic_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    logger.info("Anthropic API клиент успешно инициализирован")
+except Exception as e:
+    logger.error(f"Ошибка при инициализации Anthropic API: {e}")
+
+# Инициализация Google Gemini API
+gemini_client = None
+try:
+    import google.generativeai as genai
+    genai.configure(api_key=config.GOOGLE_API_KEY)
+    logger.info("Google Gemini API клиент успешно инициализирован")
+except Exception as e:
+    logger.error(f"Ошибка при инициализации Google Gemini API: {e}")
 
 # Заглушка для DeepSeek (замените на реальный клиент)
 class DeepSeekClient:
@@ -39,7 +54,8 @@ async def ask_chatgpt(query: str) -> str:
         str: Ответ от модели
     """
     try:
-        response = await openai.ChatCompletion.acreate(
+        # Используем новый API для OpenAI
+        response = await openai_client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": query}],
             max_tokens=1000
@@ -58,6 +74,9 @@ async def ask_claude(query: str) -> str:
     Returns:
         str: Ответ от модели
     """
+    if not anthropic_client:
+        return "❌ API клиент Anthropic не инициализирован. Проверьте API ключ и установленные библиотеки."
+    
     try:
         response = anthropic_client.messages.create(
             model="claude-3-opus-20240229",
@@ -78,6 +97,9 @@ async def ask_gemini(query: str) -> str:
     Returns:
         str: Ответ от модели
     """
+    if not gemini_client:
+        return "❌ API клиент Gemini не инициализирован. Проверьте API ключ и установленные библиотеки."
+    
     try:
         model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(query)
